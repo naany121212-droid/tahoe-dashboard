@@ -1,0 +1,61 @@
+name: Build and publish Tahoe APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'welcome-tahoe.html'
+      - 'manifest.webmanifest'
+      - 'app/**'
+      - 'settings.gradle'
+      - 'build.gradle'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.9'
+
+      - name: Package dashboard assets
+        run: |
+          mkdir -p app/src/main/assets
+          cp index.html welcome-tahoe.html manifest.webmanifest app-icon.svg app/src/main/assets/
+
+      - name: Build installable APK
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Publish APK download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          TAG="v1.0.${GITHUB_RUN_NUMBER}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$APK" --repo "$GITHUB_REPOSITORY" --title "سيارتي لتاهو - ${TAG}" --notes "ملف APK قابل للتثبيت لشاشة السيارة."
+          fi
